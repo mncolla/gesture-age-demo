@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gesture + Age Demo</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #111;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    #video {
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+
+    #overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    /* ── Tarjeta de edad/género ── */
+    #face-card {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 16px;
+      padding: 14px 20px;
+      color: #fff;
+      min-width: 160px;
+      transition: opacity 0.3s;
+    }
+
+    #face-card .label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(255, 255, 255, 0.5);
+      margin-bottom: 4px;
+    }
+
+    #face-card .value {
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    #face-card .sub {
+      font-size: 13px;
+      color: rgba(255, 255, 255, 0.6);
+      margin-top: 6px;
+    }
+
+    #face-card.hidden {
+      opacity: 0;
+    }
+
+    /* ── Botones flotantes ── */
+    .air-btn {
+      position: absolute;
+      padding: 20px 36px;
+      font-size: 22px;
+      font-weight: 600;
+      color: #fff;
+      background: rgba(255, 255, 255, 0.12);
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      border-radius: 18px;
+      backdrop-filter: blur(12px);
+      cursor: none;
+      user-select: none;
+      transition: background 0.15s, border-color 0.15s, transform 0.1s;
+      transform: translate(-50%, -50%);
+    }
+
+    .air-btn.hovered {
+      background: rgba(255, 255, 255, 0.25);
+      border-color: rgba(255, 255, 255, 0.75);
+    }
+
+    .air-btn.fired {
+      background: rgba(80, 220, 120, 0.45);
+      border-color: rgba(80, 220, 120, 1);
+      transform: translate(-50%, -50%) scale(1.06);
+    }
+
+    #status {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      font-size: 14px;
+      background: rgba(0, 0, 0, 0.55);
+      padding: 8px 20px;
+      border-radius: 24px;
+      white-space: nowrap;
+    }
+
+    #loading-screen {
+      position: absolute;
+      inset: 0;
+      background: #111;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      gap: 16px;
+      font-size: 16px;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <video id="video" autoplay muted playsinline></video>
+  <canvas id="overlay"></canvas>
+
+  <div id="loading-screen">
+    <div class="spinner"></div>
+    <span id="loading-text">Iniciando cámara...</span>
+  </div>
+
+  <!-- Tarjeta edad/género -->
+  <div id="face-card" class="hidden">
+    <div class="label">Edad estimada</div>
+    <div class="value" id="face-age">–</div>
+    <div class="sub" id="face-gender">–</div>
+  </div>
+
+  <!-- Botones flotantes -->
+  <button class="air-btn" id="btn-saludar" style="top:38%; left:30%">👋 Saludar</button>
+  <button class="air-btn" id="btn-celebrar" style="top:38%; left:70%">🎉 Celebrar</button>
+  <button class="air-btn" id="btn-reset" style="top:68%; left:50%">🔄 Reset</button>
+
+  <div id="status">Cargando...</div>
+
+  <script type="module">
+    import { HandLandmarker, FilesetResolver }
+      from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js";
+    import * as faceapi
+      from "https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.esm.js";
+
+    // ─── Config ───────────────────────────────────────────────────────────────────
+    const HOVER_MS = 900;
+    const COOLDOWN = 1200;
+    const TOLERANCE = 14;
+    const FACE_EVERY_N = 12;  // analizar cara cada N frames (ahorra CPU)
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("overlay");
+    const ctx = canvas.getContext("2d");
+    const statusEl = document.getElementById("status");
+    const loadScreen = document.getElementById("loading-screen");
+    const loadText = document.getElementById("loading-text");
+    const buttons = document.querySelectorAll(".air-btn");
+    const faceCard = document.getElementById("face-card");
+    const faceAge = document.getElementById("face-age");
+    const faceGender = document.getElementById("face-gender");
+
+    let handLandmarker = null;
+    let hoverStart = {};
+    let lastFired = {};
+    let frameCount = 0;
+
+    // ─── Canvas resize ────────────────────────────────────────────────────────────
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
+
+    // ─── Cámara ───────────────────────────────────────────────────────────────────
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }
+        });
+        video.srcObject = stream;
+      } catch {
+        loadText.textContent = "Sin acceso a la cámara. Revisá los permisos.";
+        throw new Error("camera-denied");
+      }
+    }
+
+    // ─── Modelos ──────────────────────────────────────────────────────────────────
+    async function loadModels() {
+      loadText.textContent = "Cargando modelo de mano...";
+      const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm"
+      );
+      handLandmarker = await HandLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath:
+            "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task",
+          delegate: "GPU"
+        },
+        runningMode: "VIDEO",
+        numHands: 1
+      });
+
+      loadText.textContent = "Cargando modelo de edad...";
+      await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
+      await faceapi.nets.ageGenderNet.loadFromUri("/models");
+    }
+
+    // ─── Detección de edad/género (corre cada FACE_EVERY_N frames) ───────────────
+    async function detectFace() {
+      const result = await faceapi
+        .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.4 }))
+        .withAgeAndGender();
+
+      if (result) {
+        const age = Math.round(result.age);
+        const gender = result.gender === "male" ? "Hombre" : "Mujer";
+        const conf = Math.round(result.genderProbability * 100);
+
+        faceAge.textContent = `~${age} años`;
+        faceGender.textContent = `${gender} · ${conf}% confianza`;
+        faceCard.classList.remove("hidden");
+      } else {
+        faceCard.classList.add("hidden");
+      }
+    }
+
+    // ─── Hit testing ─────────────────────────────────────────────────────────────
+    function getHoveredButton(x, y) {
+      for (const btn of buttons) {
+        const r = btn.getBoundingClientRect();
+        if (
+          x >= r.left - TOLERANCE && x <= r.right + TOLERANCE &&
+          y >= r.top - TOLERANCE && y <= r.bottom + TOLERANCE
+        ) return btn;
+      }
+      return null;
+    }
+
+    // ─── Cursor + anillo de progreso ─────────────────────────────────────────────
+    function drawCursor(x, y, progress) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.beginPath();
+      ctx.arc(x, y, 9, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,255,0.95)";
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(x, y, 14, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255,255,255,0.25)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      if (progress > 0) {
+        ctx.beginPath();
+        ctx.arc(x, y, 22, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+        ctx.strokeStyle = `rgba(80,220,120,${0.6 + progress * 0.4})`;
+        ctx.lineWidth = 4;
+        ctx.lineCap = "round";
+        ctx.stroke();
+      }
+    }
+
+    // ─── Loop principal ───────────────────────────────────────────────────────────
+    function detect() {
+      if (!handLandmarker || video.readyState < 2) {
+        requestAnimationFrame(detect);
+        return;
+      }
+
+      frameCount++;
+
+      // Cara: cada N frames, sin bloquear el loop (fire-and-forget)
+      if (frameCount % FACE_EVERY_N === 0) {
+        detectFace().catch(() => { });
+      }
+
+      // Mano
+      const results = handLandmarker.detectForVideo(video, performance.now());
+      buttons.forEach(b => b.classList.remove("hovered"));
+
+      if (results.landmarks.length > 0) {
+        const tip = results.landmarks[0][8];
+        const x = (1 - tip.x) * window.innerWidth;
+        const y = tip.y * window.innerHeight;
+
+        const hovered = getHoveredButton(x, y);
+        const now = performance.now();
+        let progress = 0;
+
+        if (hovered) {
+          hovered.classList.add("hovered");
+          const id = hovered.id;
+
+          if (!hoverStart[id]) hoverStart[id] = now;
+
+          const elapsed = now - hoverStart[id];
+          progress = Math.min(elapsed / HOVER_MS, 1);
+
+          if (elapsed >= HOVER_MS) {
+            const sinceLastFire = now - (lastFired[id] ?? 0);
+            if (sinceLastFire > COOLDOWN) {
+              lastFired[id] = now;
+              hoverStart[id] = null;
+              fireButton(hovered);
+            }
+          }
+        } else {
+          hoverStart = {};
+        }
+
+        drawCursor(x, y, progress);
+      } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        hoverStart = {};
+      }
+
+      requestAnimationFrame(detect);
+    }
+
+    // ─── Acción al disparar ───────────────────────────────────────────────────────
+    function fireButton(btn) {
+      btn.classList.add("fired");
+      btn.click();
+      setTimeout(() => btn.classList.remove("fired"), 450);
+    }
+
+    // ─── Handlers botones ─────────────────────────────────────────────────────────
+    const messages = {
+      "btn-saludar": "👋 ¡Hola! Saludaste con el dedo",
+      "btn-celebrar": "🎉 ¡Wooooo! A celebrar",
+      "btn-reset": "🔄 Todo reseteado"
+    };
+
+    buttons.forEach(btn => {
+      btn.addEventListener("click", () => {
+        statusEl.textContent = messages[btn.id] ?? "✅ Acción disparada";
+        setTimeout(() => {
+          statusEl.textContent = "Apuntá con el dedo índice y mantené sobre un botón";
+        }, 2500);
+      });
+    });
+
+    // ─── Init ─────────────────────────────────────────────────────────────────────
+    try {
+      await startCamera();
+      await loadModels();
+      loadScreen.style.display = "none";
+      statusEl.textContent = "Apuntá con el dedo índice y mantené sobre un botón";
+      detect();
+    } catch (err) {
+      if (err.message !== "camera-denied") {
+        loadText.textContent = "Error al cargar los modelos. Revisá la consola.";
+        console.error(err);
+      }
+    }
+  </script>
+</body>
+
+</html>
