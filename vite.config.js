@@ -1,5 +1,5 @@
 import { defineConfig } from "vite";
 
-export default defineConfig({
-  base: "/gesture-age-demo/",
-});
+export default defineConfig(({ command }) => ({
+  base: command === "serve" ? "/" : "/gesture-age-demo/",
+}));

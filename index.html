@@ -46,9 +46,7 @@
       padding: 14px 20px;
       color: #fff;
       min-width: 160px;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.4s ease;
+      transition: opacity 0.3s;
     }
 
     #face-card .label {
@@ -115,7 +113,7 @@
     }
 
     #btn-bar {
-      display: none;
+      display: contents;
     }
 
     #status {
@@ -308,8 +306,9 @@
       });
 
       loadText.textContent = "Cargando modelo de edad...";
-      await faceapi.nets.tinyFaceDetector.loadFromUri("/gesture-age-demo/models");
-      await faceapi.nets.ageGenderNet.loadFromUri("/gesture-age-demo/models");
+      const modelsPath = import.meta.env.DEV ? "/models" : "/gesture-age-demo/models";
+      await faceapi.nets.tinyFaceDetector.loadFromUri(modelsPath);
+      await faceapi.nets.ageGenderNet.loadFromUri(modelsPath);
     }
 
     // ─── Detección de edad/género (corre cada FACE_EVERY_N frames) ───────────────
@@ -456,7 +455,6 @@
       statusEl.textContent = "Apuntá con el dedo índice y mantené sobre un botón";
       buttons.forEach(b => { b.style.opacity = "1"; b.style.pointerEvents = "auto"; });
       statusEl.style.opacity = "1";
-      faceCard.style.transition = "opacity 0.4s ease";
       detect();
     } catch (err) {
       if (err.message !== "camera-denied") {
