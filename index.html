@@ -46,7 +46,9 @@
       padding: 14px 20px;
       color: #fff;
       min-width: 160px;
-      transition: opacity 0.3s;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease;
     }
 
     #face-card .label {
@@ -86,8 +88,19 @@
       backdrop-filter: blur(12px);
       cursor: none;
       user-select: none;
-      transition: background 0.15s, border-color 0.15s, transform 0.1s;
+      opacity: 0;
+      pointer-events: none;
+      transition: background 0.15s, border-color 0.15s, transform 0.1s, opacity 0.4s ease;
       transform: translate(-50%, -50%);
+    }
+
+    .air-btn .btn-icon {
+      display: inline;
+    }
+
+    .air-btn .btn-label {
+      display: inline;
+      margin-left: 6px;
     }
 
     .air-btn.hovered {
@@ -101,6 +114,10 @@
       transform: translate(-50%, -50%) scale(1.06);
     }
 
+    #btn-bar {
+      display: none;
+    }
+
     #status {
       position: absolute;
       bottom: 24px;
@@ -112,6 +129,60 @@
       padding: 8px 20px;
       border-radius: 24px;
       white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+
+    @media (max-width: 768px) {
+      #btn-bar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        gap: 8px;
+        padding: 8px;
+        background: rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(8px);
+        z-index: 10;
+      }
+
+      .air-btn {
+        position: static;
+        transform: none;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 4px;
+        font-size: 22px;
+        border-radius: 12px;
+        gap: 2px;
+      }
+
+      .air-btn .btn-icon {
+        display: block;
+        font-size: 22px;
+        line-height: 1;
+      }
+
+      .air-btn .btn-label {
+        display: block;
+        font-size: 10px;
+        font-weight: 600;
+        margin-left: 0;
+        line-height: 1;
+      }
+
+      .air-btn.fired {
+        transform: scale(1.04);
+      }
+
+      #status {
+        bottom: 80px;
+      }
     }
 
     #loading-screen {
@@ -125,6 +196,7 @@
       color: #fff;
       gap: 16px;
       font-size: 16px;
+      z-index: 9999;
     }
 
     .spinner {
@@ -161,9 +233,11 @@
   </div>
 
   <!-- Botones flotantes -->
-  <button class="air-btn" id="btn-saludar" style="top:38%; left:30%">👋 Saludar</button>
-  <button class="air-btn" id="btn-celebrar" style="top:38%; left:70%">🎉 Celebrar</button>
-  <button class="air-btn" id="btn-reset" style="top:68%; left:50%">🔄 Reset</button>
+  <div id="btn-bar">
+    <button class="air-btn" id="btn-saludar" style="top:38%; left:30%"><span class="btn-icon">👋</span><span class="btn-label">Saludar</span></button>
+    <button class="air-btn" id="btn-celebrar" style="top:38%; left:70%"><span class="btn-icon">🎉</span><span class="btn-label">Celebrar</span></button>
+    <button class="air-btn" id="btn-reset" style="top:68%; left:50%"><span class="btn-icon">🔄</span><span class="btn-label">Reset</span></button>
+  </div>
 
   <div id="status">Cargando...</div>
 
@@ -380,6 +454,9 @@
       await loadModels();
       loadScreen.style.display = "none";
       statusEl.textContent = "Apuntá con el dedo índice y mantené sobre un botón";
+      buttons.forEach(b => { b.style.opacity = "1"; b.style.pointerEvents = "auto"; });
+      statusEl.style.opacity = "1";
+      faceCard.style.transition = "opacity 0.4s ease";
       detect();
     } catch (err) {
       if (err.message !== "camera-denied") {
