@@ -308,8 +308,8 @@
       });
 
       loadText.textContent = "Cargando modelo de edad...";
-      await faceapi.nets.tinyFaceDetector.loadFromUri("/models");
-      await faceapi.nets.ageGenderNet.loadFromUri("/models");
+      await faceapi.nets.tinyFaceDetector.loadFromUri("/gesture-age-demo/models");
+      await faceapi.nets.ageGenderNet.loadFromUri("/gesture-age-demo/models");
     }
 
     // ─── Detección de edad/género (corre cada FACE_EVERY_N frames) ───────────────
