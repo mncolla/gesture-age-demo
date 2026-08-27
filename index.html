@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Gesture + Age Demo 🚀</title>
+  <title>Gesture + Age Demo</title>
   <style>
     * {
       margin: 0;
@@ -133,53 +133,29 @@
     }
 
     @media (max-width: 768px) {
-      #btn-bar {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        display: flex;
-        gap: 8px;
-        padding: 8px;
-        background: rgba(0, 0, 0, 0.3);
-        backdrop-filter: blur(8px);
-        z-index: 10;
-      }
-
       .air-btn {
-        position: static;
-        transform: none;
-        flex: 1;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: 10px 4px;
-        font-size: 22px;
-        border-radius: 12px;
-        gap: 2px;
+        padding: 16px 10px;
+        border-radius: 14px;
+        gap: 4px;
+        min-width: 96px;
       }
 
       .air-btn .btn-icon {
         display: block;
-        font-size: 22px;
+        font-size: 26px;
         line-height: 1;
       }
 
       .air-btn .btn-label {
         display: block;
-        font-size: 10px;
+        font-size: 12px;
         font-weight: 600;
         margin-left: 0;
         line-height: 1;
-      }
-
-      .air-btn.fired {
-        transform: scale(1.04);
-      }
-
-      #status {
-        bottom: 80px;
       }
     }
 
@@ -287,6 +263,20 @@
         loadText.textContent = "Sin acceso a la cámara. Revisá los permisos.";
         throw new Error("camera-denied");
       }
+    }
+
+    // ─── Espera a que el video tenga un frame disponible ────────────────────────
+    function waitForVideoReady() {
+      return new Promise(resolve => {
+        if (video.readyState >= 2) return resolve();
+        video.addEventListener("loadeddata", () => resolve(), { once: true });
+      });
+    }
+
+    // ─── Warm-up: fuerza la compilación de shaders GPU antes de mostrar la app ──
+    async function warmUpHandLandmarker() {
+      await waitForVideoReady();
+      handLandmarker.detectForVideo(video, performance.now());
     }
 
     // ─── Modelos ──────────────────────────────────────────────────────────────────
@@ -451,6 +441,8 @@
     try {
       await startCamera();
       await loadModels();
+      loadText.textContent = "Preparando detección...";
+      await warmUpHandLandmarker();
       loadScreen.style.display = "none";
       statusEl.textContent = "Apuntá con el dedo índice y mantené sobre un botón";
       buttons.forEach(b => { b.style.opacity = "1"; b.style.pointerEvents = "auto"; });
