@@ -1,1 +1,274 @@
-import{FilesetResolver as e,HandLandmarker as t}from"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js";import*as n from"https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.esm.js";(function(){let e=document.createElement(`link`).relList;if(e&&e.supports&&e.supports(`modulepreload`))return;for(let e of document.querySelectorAll(`link[rel="modulepreload"]`))n(e);new MutationObserver(e=>{for(let t of e)if(t.type===`childList`)for(let e of t.addedNodes)e.tagName===`LINK`&&e.rel===`modulepreload`&&n(e)}).observe(document,{childList:!0,subtree:!0});function t(e){let t={};return e.integrity&&(t.integrity=e.integrity),e.referrerPolicy&&(t.referrerPolicy=e.referrerPolicy),e.crossOrigin===`use-credentials`?t.credentials=`include`:e.crossOrigin===`anonymous`?t.credentials=`omit`:t.credentials=`same-origin`,t}function n(e){if(e.ep)return;e.ep=!0;let n=t(e);fetch(e.href,n)}})();var r=900,i=1200,a=14,o=12,s=document.getElementById(`video`),c=document.getElementById(`overlay`),l=c.getContext(`2d`),u=document.getElementById(`status`),d=document.getElementById(`loading-screen`),f=document.getElementById(`loading-text`),p=document.querySelectorAll(`.air-btn`),m=document.getElementById(`face-card`),h=document.getElementById(`face-age`),g=document.getElementById(`face-gender`),_=null,v={},y={},b=0;function x(){c.width=window.innerWidth,c.height=window.innerHeight}x(),window.addEventListener(`resize`,x);async function S(){try{s.srcObject=await navigator.mediaDevices.getUserMedia({video:{facingMode:`user`,width:{ideal:1280},height:{ideal:720}}})}catch{throw f.textContent=`Sin acceso a la cámara. Revisá los permisos.`,Error(`camera-denied`)}}async function C(){f.textContent=`Cargando modelo de mano...`;let r=await e.forVisionTasks(`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm`);_=await t.createFromOptions(r,{baseOptions:{modelAssetPath:`https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task`,delegate:`GPU`},runningMode:`VIDEO`,numHands:1}),f.textContent=`Cargando modelo de edad...`,await n.nets.tinyFaceDetector.loadFromUri(`/models`),await n.nets.ageGenderNet.loadFromUri(`/models`)}async function w(){let e=await n.detectSingleFace(s,new n.TinyFaceDetectorOptions({scoreThreshold:.4})).withAgeAndGender();if(e){let t=Math.round(e.age),n=e.gender===`male`?`Hombre`:`Mujer`,r=Math.round(e.genderProbability*100);h.textContent=`~${t} años`,g.textContent=`${n} · ${r}% confianza`,m.classList.remove(`hidden`)}else m.classList.add(`hidden`)}function T(e,t){for(let n of p){let r=n.getBoundingClientRect();if(e>=r.left-a&&e<=r.right+a&&t>=r.top-a&&t<=r.bottom+a)return n}return null}function E(e,t,n){l.clearRect(0,0,c.width,c.height),l.beginPath(),l.arc(e,t,9,0,Math.PI*2),l.fillStyle=`rgba(255,255,255,0.95)`,l.fill(),l.beginPath(),l.arc(e,t,14,0,Math.PI*2),l.strokeStyle=`rgba(255,255,255,0.25)`,l.lineWidth=2,l.stroke(),n>0&&(l.beginPath(),l.arc(e,t,22,-Math.PI/2,-Math.PI/2+Math.PI*2*n),l.strokeStyle=`rgba(80,220,120,${.6+n*.4})`,l.lineWidth=4,l.lineCap=`round`,l.stroke())}function D(){if(!_||s.readyState<2){requestAnimationFrame(D);return}b++,b%o===0&&w().catch(()=>{});let e=_.detectForVideo(s,performance.now());if(p.forEach(e=>e.classList.remove(`hovered`)),e.landmarks.length>0){let t=e.landmarks[0][8],n=(1-t.x)*window.innerWidth,a=t.y*window.innerHeight,o=T(n,a),s=performance.now(),c=0;if(o){o.classList.add(`hovered`);let e=o.id;v[e]||(v[e]=s);let t=s-v[e];c=Math.min(t/r,1),t>=r&&s-(y[e]??0)>i&&(y[e]=s,v[e]=null,O(o))}else v={};E(n,a,c)}else l.clearRect(0,0,c.width,c.height),v={};requestAnimationFrame(D)}function O(e){e.classList.add(`fired`),e.click(),setTimeout(()=>e.classList.remove(`fired`),450)}var k={"btn-saludar":`👋 ¡Hola! Saludaste con el dedo`,"btn-celebrar":`🎉 ¡Wooooo! A celebrar`,"btn-reset":`🔄 Todo reseteado`};p.forEach(e=>{e.addEventListener(`click`,()=>{u.textContent=k[e.id]??`✅ Acción disparada`,setTimeout(()=>{u.textContent=`Apuntá con el dedo índice y mantené sobre un botón`},2500)})});try{await S(),await C(),d.style.display=`none`,u.textContent=`Apuntá con el dedo índice y mantené sobre un botón`,D()}catch(e){e.message!==`camera-denied`&&(f.textContent=`Error al cargar los modelos. Revisá la consola.`,console.error(e))}
+import {
+  FilesetResolver,
+  HandLandmarker,
+} from "@mediapipe/tasks-vision";
+import * as faceapi from "@vladmandic/face-api/dist/face-api.esm.js";
+
+const HOLD_TIME = 900;
+const COOLDOWN_TIME = 1200;
+const POINTER_RADIUS = 14;
+const FACE_DETECTION_INTERVAL = 12;
+
+const video = document.getElementById("video") as HTMLVideoElement;
+const overlay = document.getElementById("overlay") as HTMLCanvasElement;
+const ctx = overlay.getContext("2d")!;
+const status = document.getElementById("status")!;
+const loadingScreen = document.getElementById("loading-screen") as HTMLElement;
+const loadingText = document.getElementById("loading-text") as HTMLElement;
+const buttons = document.querySelectorAll(".air-btn") as NodeListOf<HTMLElement>;
+const faceCard = document.getElementById("face-card") as HTMLElement;
+const faceAge = document.getElementById("face-age") as HTMLElement;
+const faceGender = document.getElementById("face-gender") as HTMLElement;
+
+let handLandmarker: HandLandmarker | null = null;
+
+const hoverStart: Record<string, number | null> = {};
+const lastFired: Record<string, number> = {};
+
+let frameCount = 0;
+
+function resizeCanvas() {
+  overlay.width = window.innerWidth;
+  overlay.height = window.innerHeight;
+}
+
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
+
+async function startCamera() {
+  try {
+    video.srcObject = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: "user",
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+    });
+  } catch {
+    loadingText.textContent =
+      "Sin acceso a la cámara. Revisá los permisos.";
+
+    throw new Error("camera-denied");
+  }
+}
+
+async function loadModels() {
+  loadingText.textContent = "Cargando modelo de mano...";
+
+  const vision = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm"
+  );
+
+  handLandmarker = await HandLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath:
+        "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task",
+      delegate: "GPU",
+    },
+    runningMode: "VIDEO",
+    numHands: 1,
+  });
+
+  loadingText.textContent = "Cargando modelo de edad...";
+
+  const modelsPath = `${import.meta.env.BASE_URL}models`;
+
+  await faceapi.nets.tinyFaceDetector.loadFromUri(modelsPath);
+  await faceapi.nets.ageGenderNet.loadFromUri(modelsPath);
+}
+
+async function detectFace() {
+  const detection = await faceapi
+    .detectSingleFace(
+      video,
+      new faceapi.TinyFaceDetectorOptions({
+        scoreThreshold: 0.4,
+      })
+    )
+    .withAgeAndGender();
+
+  if (detection) {
+    const age = Math.round(detection.age);
+    const gender =
+      detection.gender === "male" ? "Hombre" : "Mujer";
+    const probability = Math.round(
+      detection.genderProbability * 100
+    );
+
+    faceAge.textContent = `~${age} años`;
+    faceGender.textContent = `${gender} · ${probability}% confianza`;
+
+    faceCard.classList.remove("hidden");
+  } else {
+    faceCard.classList.add("hidden");
+  }
+}
+
+function findButton(x: number, y: number) {
+  for (const button of buttons) {
+    const rect = button.getBoundingClientRect();
+
+    if (
+      x >= rect.left - POINTER_RADIUS &&
+      x <= rect.right + POINTER_RADIUS &&
+      y >= rect.top - POINTER_RADIUS &&
+      y <= rect.bottom + POINTER_RADIUS
+    ) {
+      return button;
+    }
+  }
+
+  return null;
+}
+
+function drawPointer(
+  x: number,
+  y: number,
+  progress: number
+) {
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+  ctx.beginPath();
+  ctx.arc(x, y, 9, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(255,255,255,0.95)";
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(x, y, 14, 0, Math.PI * 2);
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  if (progress > 0) {
+    ctx.beginPath();
+    ctx.arc(
+      x,
+      y,
+      22,
+      -Math.PI / 2,
+      -Math.PI / 2 + Math.PI * 2 * progress
+    );
+
+    ctx.strokeStyle = `rgba(80,220,120,${0.6 + progress * 0.4})`;
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+    ctx.stroke();
+  }
+}
+
+function fireButton(button: HTMLElement) {
+  button.classList.add("fired");
+  button.click();
+
+  setTimeout(() => {
+    button.classList.remove("fired");
+  }, 450);
+}
+
+function detectHands() {
+  if (!handLandmarker || video.readyState < 2) {
+    requestAnimationFrame(detectHands);
+    return;
+  }
+
+  frameCount++;
+
+  if (frameCount % FACE_DETECTION_INTERVAL === 0) {
+    detectFace().catch(() => {});
+  }
+
+  const result = handLandmarker.detectForVideo(
+    video,
+    performance.now()
+  );
+
+  buttons.forEach((button) => {
+    button.classList.remove("hovered");
+  });
+
+  if (result.landmarks.length > 0) {
+    const indexFinger = result.landmarks[0][8];
+
+    const x = (1 - indexFinger.x) * window.innerWidth;
+    const y = indexFinger.y * window.innerHeight;
+
+    const button = findButton(x, y);
+    const now = performance.now();
+
+    let progress = 0;
+
+    if (button) {
+      button.classList.add("hovered");
+
+      const id = button.id;
+
+      if (!(id in hoverStart) || hoverStart[id] === null) {
+        hoverStart[id] = now;
+      }
+
+      const elapsed = now - hoverStart[id]!;
+      progress = Math.min(elapsed / HOLD_TIME, 1);
+
+      if (
+        elapsed >= HOLD_TIME &&
+        now - (lastFired[id] ?? 0) > COOLDOWN_TIME
+      ) {
+        lastFired[id] = now;
+        hoverStart[id] = null;
+
+        fireButton(button);
+      }
+    } else {
+      Object.keys(hoverStart).forEach((key) => {
+        hoverStart[key] = null;
+      });
+    }
+
+    drawPointer(x, y, progress);
+  } else {
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+    Object.keys(hoverStart).forEach((key) => {
+      hoverStart[key] = null;
+    });
+  }
+
+  requestAnimationFrame(detectHands);
+}
+
+const messages: Record<string, string> = {
+  "btn-saludar": "👋 ¡Hola! Saludaste con el dedo",
+  "btn-celebrar": "🎉 ¡Wooooo! A celebrar",
+  "btn-reset": "🔄 Todo reseteado",
+};
+
+buttons.forEach((button) => {
+  button.addEventListener("click", () => {
+    status.textContent =
+      messages[button.id] ?? "✅ Acción disparada";
+
+    setTimeout(() => {
+      status.textContent =
+        "Apuntá con el dedo índice y mantené sobre un botón";
+    }, 2500);
+  });
+});
+
+try {
+  await startCamera();
+  await loadModels();
+
+  loadingScreen.style.display = "none";
+
+  status.textContent =
+    "Apuntá con el dedo índice y mantené sobre un botón";
+
+  detectHands();
+} catch (error) {
+  if (error instanceof Error && error.message !== "camera-denied") {
+    loadingText.textContent =
+      "Error al cargar los modelos. Revisá la consola.";
+
+    console.error(error);
+  }
+}
